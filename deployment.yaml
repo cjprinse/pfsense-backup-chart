@@ -1,0 +1,114 @@
+---
+# Source: pfsense-backup/templates/secret.yaml
+kind: Secret
+apiVersion: v1
+metadata:
+  name: pfsense-01-config
+  namespace: backup
+  annotations:
+    "helm.sh/resource-policy": keep
+type: Opaque
+data:
+  user: "YmFja3Vw"
+  password: "U3ppRVByWWt3a004QUs="
+---
+# Source: pfsense-backup/templates/configmap.yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+    name: pfsense-01-config
+    namespace: backup
+data:
+    host: 10.200.0.1
+    scheme: https
+    schedule: 15 11 * * *
+---
+# Source: pfsense-backup/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pfsense-01-backup
+  namespace: backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: hdd-data
+---
+# Source: pfsense-backup/templates/cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pfsense-01-pfsense-backup
+  namespace: backup
+  labels:
+    helm.sh/chart: pfsense-backup-0.1.0
+    app.kubernetes.io/name: pfsense-backup
+    app.kubernetes.io/instance: pfsense-01
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pfsense-backup
+      app.kubernetes.io/instance: pfsense-01
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pfsense-backup
+        app.kubernetes.io/instance: pfsense-01
+    spec:
+      template:
+        spec:
+          securityContext:
+            {}
+          containers:
+            - name: pfsense-backup
+              env:
+                - name: PFSENSE_IP
+                  valueFrom:
+                    configMapKeyRef:
+                      name: pfsense-01-config
+                      key: host
+                - name: PFSENSE_SCHEME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: pfsense-01-config
+                      key: scheme
+                - name: PFSENSE_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: pfsense-01-config
+                      key: user
+                - name: PFSENSE_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: pfsense-01-config
+                      key: password
+                
+                - name: PFSENSE_CRON_SCHEDULE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: pfsense-01-config
+                      key: schedule
+                
+              securityContext:
+                {}
+              image: "zxjinn/pfsense-backup:latest"
+              imagePullPolicy: IfNotPresent
+              resources:
+                {}
+              volumeMounts:
+                - mountPath: "/data"
+                  name: data
+                - mountPath: /etc/localtime
+                  name: tz-amsterdam
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: pfsense-01-backup
+            - hostPath:
+                path: /usr/share/zoneinfo/Europe/Amsterdam
+              name: tz-amsterdam

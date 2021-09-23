@@ -1,0 +1,87 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "chart.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  schedule: {{ required "A cron schedule is required" .Values.cronSchedule }}
+  jobTemplate:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+    {{- include "chart.selectorLabels" . | nindent 8 }}
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ include "chart.name" . }}
+              env:
+                - name: PFSENSE_IP
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ include "configMap.name" $ }}
+                      key: host
+                - name: PFSENSE_SCHEME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ include "configMap.name" $ }}
+                      key: scheme
+                - name: PFSENSE_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "configMap.name" $ }}
+                      key: user
+                - name: PFSENSE_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "configMap.name" $ }}
+                      key: password
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+              volumeMounts:
+                {{- if .Values.extraVolumes }}
+                - mountPath: "/data"
+                  name: data
+                {{- end }}
+                {{- if .Values.extraVolumeMounts }}
+                {{- toYaml .Values.extraVolumeMounts | nindent 16 }}
+                {{- end }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          restartPolicy: Never
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              persistentVolumeClaim:
+                claimName: {{ include "pvcBackup.name" $ }}
+            {{- end }}
+            {{- if .Values.extraVolumes }}
+            {{- toYaml .Values.extraVolumes | nindent 12 }}
+            {{- end }}

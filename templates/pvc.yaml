@@ -1,0 +1,16 @@
+{{- if .Values.persistence.enabled }}
+{{- with .Values.persistence }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pvcBackup.name" $ }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  accessModes:
+    - {{ .accessMode}}
+  resources:
+    requests:
+      storage: {{ .size }}
+  storageClassName: {{ .storageClassName }}
+{{- end -}}
+{{ end -}}
